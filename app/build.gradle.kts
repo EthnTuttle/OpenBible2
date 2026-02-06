@@ -1,7 +1,9 @@
 plugins {
     alias(libs.plugins.android.application)
+    alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.ksp)
 }
 
 android {
@@ -67,4 +69,15 @@ dependencies {
     implementation(libs.zip4j)
     implementation(platform(libs.androidx.compose.bom))
     testImplementation(libs.junit)
+    // Nostr dependencies
+    implementation(libs.okhttp)
+    implementation(libs.ktor.server.cio)
+    implementation(libs.ktor.server.websockets)
+    implementation(libs.androidx.room.runtime)
+    implementation(libs.androidx.room.ktx)
+    ksp(libs.androidx.room.compiler)
+    implementation(libs.androidx.security.crypto)
+    implementation(libs.secp256k1.kmp.jni.android)
+    implementation(libs.negentropy.kmp)
+    implementation(libs.kotlinx.coroutines.android)
 }

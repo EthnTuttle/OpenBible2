@@ -74,6 +74,49 @@ fun getChapter(
     return Triple(bible.translation, bible.books[book].chapters[chapter].name, text)
 }
 
+/**
+ * Structured verse data for per-verse rendering.
+ */
+data class VerseDisplay(
+    val verseNumber: Int,
+    val text: String,
+    val bookIndex: Int,
+    val chapterIndex: Int,
+    val bookName: String,
+    val reference: String  // e.g., "bible:schlachter/john/3/16"
+)
+
+/**
+ * Get structured verse data for per-verse rendering with highlight support.
+ */
+fun getVerses(
+    context: Context,
+    abbrev: String,
+    book: Int,
+    chapter: Int,
+    error: String
+): Triple<String, String, List<VerseDisplay>> {
+    val bible =
+        deserializeBible(getTranslationPath(context, abbrev))
+            ?: return Triple(error, error, emptyList())
+    if (book >= bible.books.size) return Triple(error, error, emptyList())
+    val bookObj = bible.books[book]
+    if (chapter >= bookObj.chapters.size) return Triple(error, error, emptyList())
+    val chapterObj = bookObj.chapters[chapter]
+
+    val verses = chapterObj.verses.map { verse ->
+        VerseDisplay(
+            verseNumber = verse.verse,
+            text = verse.text,
+            bookIndex = book,
+            chapterIndex = chapter,
+            bookName = bookObj.name,
+            reference = "bible:$abbrev/${bookObj.name}/$chapter/${verse.verse}"
+        )
+    }
+    return Triple(bible.translation, chapterObj.name, verses)
+}
+
 fun getMainThemeOptions(
     context: Context, themeOption: ThemeOption? = null, schemeOption: SchemeOption? = null
 ): Triple<Boolean?, Boolean, Boolean> {
@@ -128,13 +171,13 @@ fun getTranslationList(context: Context, showCustom: Boolean? = null): Array<Fil
 fun File.getChecksum(): String? {
     return try {
         val md = MessageDigest.getInstance("SHA-1")
-        val fis = FileInputStream(this)
-        val buffer = ByteArray(1024)
-        var bytesRead: Int
-        while (fis.read(buffer).also { bytesRead = it } != -1) {
-            md.update(buffer, 0, bytesRead)
+        FileInputStream(this).use { fis ->
+            val buffer = ByteArray(1024)
+            var bytesRead: Int
+            while (fis.read(buffer).also { bytesRead = it } != -1) {
+                md.update(buffer, 0, bytesRead)
+            }
         }
-        fis.close()
         bytesToHex(md.digest())
     } catch (_: Exception) {
         null
@@ -154,11 +197,15 @@ fun getTranslation(context: Context, abbrev: String): File {
 }
 
 fun getTranslationPath(context: Context, abbrev: String): String {
-    return "${getExternalPath(context)}/${abbrev}.json"
+    return "${getExternalPath(context)}/${sanitizeAbbrev(abbrev)}.json"
 }
 
 fun getExternalPath(context: Context, relPath: String = ""): String {
     return context.getExternalFilesDir(relPath).toString()
+}
+
+fun sanitizeAbbrev(abbrev: String): String {
+    return abbrev.replace(Regex("[^a-zA-Z0-9_-]"), "")
 }
 
 fun getUpdateList(context: Context, install: Boolean, translation: String? = null): List<String> {

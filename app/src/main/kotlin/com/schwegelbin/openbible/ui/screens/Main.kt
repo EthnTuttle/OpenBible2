@@ -1,6 +1,9 @@
 package com.schwegelbin.openbible.ui.screens
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -13,10 +16,12 @@ import com.schwegelbin.openbible.logic.getCheckAtStartup
 import com.schwegelbin.openbible.logic.getIndex
 import com.schwegelbin.openbible.logic.getTranslationList
 import com.schwegelbin.openbible.logic.saveDeepLink
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 
 @Serializable
-object Bookmarks
+object Highlights
 
 @Serializable
 object Read
@@ -38,17 +43,27 @@ object Start
 @Composable
 fun App(onThemeChange: (Boolean?, Boolean?, Boolean?) -> Unit) {
     val context = LocalContext.current
-    fixLegacy(context)
-    val startDestination: Any =
-        if (!getIndex(context).exists() ||
-            getTranslationList(context).isEmpty() ||
-            (getCheckAtStartup(context) && checkForUpdates(context, false))
-        ) Start else Read
+    val startDestination = remember { mutableStateOf<Any?>(null) }
+
+    LaunchedEffect(Unit) {
+        withContext(Dispatchers.IO) {
+            fixLegacy(context)
+        }
+        val dest: Any = withContext(Dispatchers.IO) {
+            if (!getIndex(context).exists() ||
+                getTranslationList(context).isEmpty() ||
+                (getCheckAtStartup(context) && checkForUpdates(context, false))
+            ) Start else Read
+        }
+        startDestination.value = dest
+    }
+
+    val dest = startDestination.value ?: return
 
     val navController = rememberNavController()
-    NavHost(navController, startDestination = startDestination) {
-        composable<Bookmarks> {
-            BookmarksScreen(onNavigateToRead = {
+    NavHost(navController, startDestination = dest) {
+        composable<Highlights> {
+            HighlightsScreen(onNavigateToRead = {
                 navController.navigate(Read) {
                     popUpTo(0) { inclusive = true }
                 }
@@ -69,7 +84,7 @@ fun App(onThemeChange: (Boolean?, Boolean?, Boolean?) -> Unit) {
                 chapter = chapter
             )
             ReadScreen(
-                onNavigateToBookmarks = { navController.navigate(Bookmarks) },
+                onNavigateToBookmarks = { navController.navigate(Highlights) },
                 onNavigateToRead = {
                     navController.navigate(Read) {
                         popUpTo(0) { inclusive = true }

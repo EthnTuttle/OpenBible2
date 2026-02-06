@@ -59,6 +59,25 @@
     <string name="update">Update</string>
     <string name="verse_of_the_day">Verse of the day</string>
     <string name="vertical">Vertical</string>
+    <string name="cancel">Cancel</string>
+    <string name="save">Save</string>
+    <string name="highlights">Highlights</string>
+    <string name="highlight_create_title">Create Highlight</string>
+    <string name="highlight_view_title">Highlight</string>
+    <string name="highlight_note_label">Note</string>
+    <string name="highlight_publish">Publish</string>
+    <string name="highlight_publish_all">Publish All</string>
+    <string name="highlight_no_highlights">No highlights yet</string>
+    <string name="highlight_local_only">Local only</string>
+    <string name="nostr">Nostr</string>
+    <string name="nostr_identity">Identity</string>
+    <string name="nostr_signer">Signer</string>
+    <string name="nostr_signer_local">Local</string>
+    <string name="nostr_signer_amber">Amber</string>
+    <string name="nostr_local_relay">Local Relay</string>
+    <string name="nostr_public_relays">Public Relays</string>
+    <string name="nostr_auto_publish">Auto-publish highlights</string>
+    <string name="nostr_no_key">No key generated</string>
     <string name="app_name" translatable="false">OpenBible</string>
     <string name="google_play" translatable="false">Google Play</string>
     <string name="source_getbible" translatable="false">getBible</string>

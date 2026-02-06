@@ -247,3 +247,59 @@ fun saveVerseOfTheDay(context: Context, shown: Boolean) {
         putBoolean("verseOfTheDay", shown)
     }
 }
+
+
+// -- Nostr Settings --
+
+enum class SignerOption {
+    Local, Amber
+}
+
+fun getLocalRelayUrl(context: Context): String {
+    return context.getSharedPreferences("nostr", Context.MODE_PRIVATE)
+        .getString("localRelayUrl", "ws://localhost:4869") ?: "ws://localhost:4869"
+}
+
+fun saveLocalRelayUrl(context: Context, url: String) {
+    context.getSharedPreferences("nostr", Context.MODE_PRIVATE).edit {
+        putString("localRelayUrl", url)
+    }
+}
+
+fun getPublicRelays(context: Context): Set<String> {
+    return context.getSharedPreferences("nostr", Context.MODE_PRIVATE)
+        .getStringSet("publicRelays", setOf("wss://relay.damus.io", "wss://relay.primal.net"))
+        ?: setOf("wss://relay.damus.io", "wss://relay.primal.net")
+}
+
+fun savePublicRelays(context: Context, relays: Set<String>) {
+    context.getSharedPreferences("nostr", Context.MODE_PRIVATE).edit {
+        putStringSet("publicRelays", relays)
+    }
+}
+
+fun getAutoPublish(context: Context): Boolean {
+    return context.getSharedPreferences("nostr", Context.MODE_PRIVATE)
+        .getBoolean("autoPublish", false)
+}
+
+fun saveAutoPublish(context: Context, enabled: Boolean) {
+    context.getSharedPreferences("nostr", Context.MODE_PRIVATE).edit {
+        putBoolean("autoPublish", enabled)
+    }
+}
+
+fun getSignerOption(context: Context): SignerOption {
+    val str = context.getSharedPreferences("nostr", Context.MODE_PRIVATE)
+        .getString("signer", "Local")
+    return when (str) {
+        SignerOption.Amber.toString() -> SignerOption.Amber
+        else -> SignerOption.Local
+    }
+}
+
+fun saveSignerOption(context: Context, option: SignerOption) {
+    context.getSharedPreferences("nostr", Context.MODE_PRIVATE).edit {
+        putString("signer", option.toString())
+    }
+}

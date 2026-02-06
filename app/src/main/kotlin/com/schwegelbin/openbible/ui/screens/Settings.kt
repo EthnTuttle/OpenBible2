@@ -6,7 +6,9 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -18,6 +20,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RangeSlider
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
@@ -166,6 +169,9 @@ fun SettingsScreen(
                 BackupButton(isData = true, text = stringResource(R.string.preferences))
             }
             HorizontalDivider(Modifier.padding(12.dp))
+            Text(stringResource(R.string.nostr), style = styleLarge, modifier = modLarge)
+            NostrSettingsSection()
+            HorizontalDivider(Modifier.padding(12.dp))
             Text(stringResource(R.string.about_us), style = styleLarge, modifier = modLarge)
             Row(
                 Modifier
@@ -192,6 +198,43 @@ fun SettingsScreen(
             }
         }
     }
+}
+
+@Composable
+fun NostrSettingsSection() {
+    val context = LocalContext.current
+    val npub = com.schwegelbin.openbible.logic.nostr.getPublicKeyHex(context)
+
+    // Identity
+    Text(
+        text = "${stringResource(R.string.nostr_identity)}: ${npub?.take(16)?.let { "${it}..." } ?: stringResource(R.string.nostr_no_key)}",
+        style = MaterialTheme.typography.bodyMedium,
+        modifier = Modifier.padding(bottom = 4.dp)
+    )
+
+    // Local relay URL
+    val localRelay = remember { mutableStateOf(com.schwegelbin.openbible.logic.getLocalRelayUrl(context)) }
+    OutlinedTextField(
+        value = localRelay.value,
+        onValueChange = {
+            localRelay.value = it
+            com.schwegelbin.openbible.logic.saveLocalRelayUrl(context, it)
+        },
+        label = { Text(stringResource(R.string.nostr_local_relay)) },
+        modifier = Modifier.fillMaxWidth(),
+        singleLine = true
+    )
+
+    Spacer(Modifier.height(8.dp))
+
+    // Auto-publish toggle
+    SettingsField(
+        text = stringResource(R.string.nostr_auto_publish),
+        initialState = com.schwegelbin.openbible.logic.getAutoPublish(context),
+        saveFunction = { checked ->
+            com.schwegelbin.openbible.logic.saveAutoPublish(context, checked)
+        }
+    )
 }
 
 @Composable
