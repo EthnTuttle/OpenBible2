@@ -76,8 +76,17 @@
     <string name="nostr_signer_amber">Amber</string>
     <string name="nostr_local_relay">Local Relay</string>
     <string name="nostr_public_relays">Public Relays</string>
-    <string name="nostr_auto_publish">Auto-publish highlights</string>
+    <string name="nostr_auto_publish">Auto-publish to public relays</string>
     <string name="nostr_no_key">No key generated</string>
+    <string name="nostr_generate_key">Generate Key</string>
+    <string name="nostr_import_key">Import nsec</string>
+    <string name="nostr_connect_amber">Connect Amber</string>
+    <string name="nostr_logout">Delete Key</string>
+    <string name="nostr_import_key_hint">nsec or hex private key</string>
+    <string name="nostr_import_error">Invalid key format</string>
+    <string name="nostr_add_relay">Add relay</string>
+    <string name="nostr_relay_hint">wss://relay.example.com</string>
+    <string name="nostr_amber_not_installed">Amber not installed</string>
     <string name="app_name" translatable="false">OpenBible</string>
     <string name="google_play" translatable="false">Google Play</string>
     <string name="source_getbible" translatable="false">getBible</string>

@@ -1,6 +1,8 @@
 package com.schwegelbin.openbible.ui.components
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -22,20 +24,28 @@ import com.schwegelbin.openbible.logic.nostr.Highlight
  * @param highlight The highlight for this verse, if any
  * @param textStyle Text style for the verse content
  * @param onAnnotationClick Callback when the corner annotation is tapped
+ * @param onLongClick Callback when the verse is long-pressed (to create highlight)
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun VerseText(
     verse: VerseDisplay,
     showVerseNumber: Boolean,
     highlight: Highlight?,
     textStyle: TextStyle,
-    onAnnotationClick: () -> Unit = {}
+    onAnnotationClick: () -> Unit = {},
+    onLongClick: () -> Unit = {}
 ) {
     val hasHighlight = highlight != null
     val highlightColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.3f)
 
     Box(
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier
+            .fillMaxWidth()
+            .combinedClickable(
+                onClick = { /* Normal click does nothing special */ },
+                onLongClick = onLongClick
+            )
     ) {
         val text = if (showVerseNumber) {
             "${verse.verseNumber} ${verse.text}".trim()

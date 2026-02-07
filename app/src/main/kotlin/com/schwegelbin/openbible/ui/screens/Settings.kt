@@ -33,12 +33,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import com.schwegelbin.openbible.R
+import com.schwegelbin.openbible.logic.nostr.hexToByteArray
+import com.schwegelbin.openbible.logic.nostr.toHexString
 import com.schwegelbin.openbible.logic.ReadTextAlignment
 import com.schwegelbin.openbible.logic.SchemeOption
 import com.schwegelbin.openbible.logic.SplitScreen
@@ -203,16 +206,111 @@ fun SettingsScreen(
 @Composable
 fun NostrSettingsSection() {
     val context = LocalContext.current
-    val npub = com.schwegelbin.openbible.logic.nostr.getPublicKeyHex(context)
+    val hasKey = remember { mutableStateOf(com.schwegelbin.openbible.logic.nostr.hasKeypair(context)) }
+    val npub = remember { mutableStateOf(com.schwegelbin.openbible.logic.nostr.getPublicKeyHex(context)) }
+    val showImportDialog = remember { mutableStateOf(false) }
+    val styleMedium = MaterialTheme.typography.titleMedium
 
-    // Identity
-    Text(
-        text = "${stringResource(R.string.nostr_identity)}: ${npub?.take(16)?.let { "${it}..." } ?: stringResource(R.string.nostr_no_key)}",
-        style = MaterialTheme.typography.bodyMedium,
-        modifier = Modifier.padding(bottom = 4.dp)
-    )
+    // -- Identity --
+    Text(stringResource(R.string.nostr_identity), style = styleMedium)
+    if (hasKey.value && npub.value != null) {
+        Text(
+            text = npub.value!!.take(16) + "...",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(vertical = 4.dp)
+        )
+        OutlinedButton(onClick = {
+            com.schwegelbin.openbible.logic.nostr.deleteKeypair(context)
+            hasKey.value = false
+            npub.value = null
+        }) { Text(stringResource(R.string.nostr_logout)) }
+    } else {
+        Text(
+            text = stringResource(R.string.nostr_no_key),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(vertical = 4.dp)
+        )
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            OutlinedButton(onClick = {
+                val (priv, pub) = com.schwegelbin.openbible.logic.nostr.getOrCreateKeypair(context)
+                hasKey.value = true
+                npub.value = pub
+            }) { Text(stringResource(R.string.nostr_generate_key)) }
+            OutlinedButton(onClick = {
+                showImportDialog.value = true
+            }) { Text(stringResource(R.string.nostr_import_key)) }
+        }
+        Spacer(Modifier.height(4.dp))
+        val amberSigner = com.schwegelbin.openbible.logic.nostr.AmberSigner(context, "")
+        OutlinedButton(onClick = {
+            if (amberSigner.isAvailable()) {
+                // TODO: launch Amber get_public_key intent
+            }
+        }) { Text(stringResource(R.string.nostr_connect_amber)) }
+    }
 
-    // Local relay URL
+    // Import nsec dialog
+    if (showImportDialog.value) {
+        val keyInput = remember { mutableStateOf("") }
+        val error = remember { mutableStateOf(false) }
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showImportDialog.value = false },
+            title = { Text(stringResource(R.string.nostr_import_key)) },
+            text = {
+                Column {
+                    OutlinedTextField(
+                        value = keyInput.value,
+                        onValueChange = { keyInput.value = it; error.value = false },
+                        label = { Text(stringResource(R.string.nostr_import_key_hint)) },
+                        singleLine = true,
+                        isError = error.value,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    if (error.value) {
+                        Text(
+                            stringResource(R.string.nostr_import_error),
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    try {
+                        val hex = keyInput.value.trim().let { raw ->
+                            if (raw.length == 64 && raw.all { it in "0123456789abcdef" }) raw
+                            else throw IllegalArgumentException("Not valid hex")
+                        }
+                        val pubkey = fr.acinq.secp256k1.Secp256k1.pubkeyCreate(hex.hexToByteArray())
+                        val xonly = pubkey.copyOfRange(1, 33)
+                        val pubHex = xonly.toHexString()
+                        com.schwegelbin.openbible.logic.nostr.storeKeypair(context, hex, pubHex)
+                        hasKey.value = true
+                        npub.value = pubHex
+                        showImportDialog.value = false
+                    } catch (_: Exception) {
+                        error.value = true
+                    }
+                }) { Text(stringResource(R.string.save)) }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    showImportDialog.value = false
+                }) { Text(stringResource(R.string.cancel)) }
+            }
+        )
+    }
+
+    Spacer(Modifier.height(12.dp))
+
+    // -- Local relay URL --
+    Text(stringResource(R.string.nostr_local_relay), style = styleMedium)
     val localRelay = remember { mutableStateOf(com.schwegelbin.openbible.logic.getLocalRelayUrl(context)) }
     OutlinedTextField(
         value = localRelay.value,
@@ -225,9 +323,63 @@ fun NostrSettingsSection() {
         singleLine = true
     )
 
+    Spacer(Modifier.height(12.dp))
+
+    // -- Public relays (add/remove list) --
+    Text(stringResource(R.string.nostr_public_relays), style = styleMedium)
+    val relays = remember {
+        mutableStateOf(com.schwegelbin.openbible.logic.getPublicRelays(context).toMutableList())
+    }
+    relays.value.forEachIndexed { index, relay ->
+        Row(
+            Modifier.fillMaxWidth().padding(vertical = 2.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = relay,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.weight(1f)
+            )
+            IconButton(onClick = {
+                val updated = relays.value.toMutableList()
+                updated.removeAt(index)
+                relays.value = updated
+                com.schwegelbin.openbible.logic.savePublicRelays(context, updated.toSet())
+            }) {
+                Icon(Icons.Filled.Close, stringResource(R.string.delete))
+            }
+        }
+    }
+    val newRelay = remember { mutableStateOf("") }
+    Row(
+        Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        OutlinedTextField(
+            value = newRelay.value,
+            onValueChange = { newRelay.value = it },
+            label = { Text(stringResource(R.string.nostr_relay_hint)) },
+            modifier = Modifier.weight(1f),
+            singleLine = true
+        )
+        OutlinedButton(
+            onClick = {
+                val url = newRelay.value.trim()
+                if (url.startsWith("wss://") || url.startsWith("ws://")) {
+                    val updated = relays.value.toMutableList()
+                    updated.add(url)
+                    relays.value = updated
+                    com.schwegelbin.openbible.logic.savePublicRelays(context, updated.toSet())
+                    newRelay.value = ""
+                }
+            },
+            modifier = Modifier.padding(start = 8.dp)
+        ) { Text(stringResource(R.string.nostr_add_relay)) }
+    }
+
     Spacer(Modifier.height(8.dp))
 
-    // Auto-publish toggle
+    // -- Auto-publish to public relays --
     SettingsField(
         text = stringResource(R.string.nostr_auto_publish),
         initialState = com.schwegelbin.openbible.logic.getAutoPublish(context),

@@ -281,6 +281,12 @@ fun ReadCard(
                                             selectedHighlight.value = highlight
                                             showViewSheet.value = true
                                         }
+                                    },
+                                    onLongClick = {
+                                        if (hasKeypair(context)) {
+                                            selectedVerseForCreate.value = verse
+                                            showCreateSheet.value = true
+                                        }
                                     }
                                 )
                             }
@@ -305,6 +311,12 @@ fun ReadCard(
                                     if (highlight != null) {
                                         selectedHighlight.value = highlight
                                         showViewSheet.value = true
+                                    }
+                                },
+                                onLongClick = {
+                                    if (hasKeypair(context)) {
+                                        selectedVerseForCreate.value = verse
+                                        showCreateSheet.value = true
                                     }
                                 }
                             )
