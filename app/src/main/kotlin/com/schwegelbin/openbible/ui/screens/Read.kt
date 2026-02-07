@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronLeft
@@ -45,7 +44,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -73,7 +71,7 @@ import com.schwegelbin.openbible.logic.nostr.embedded.EventStore
 import com.schwegelbin.openbible.logic.nostr.hasKeypair
 import com.schwegelbin.openbible.logic.turnChapter
 import com.schwegelbin.openbible.ui.components.CreateHighlightSheet
-import com.schwegelbin.openbible.ui.components.VerseText
+import com.schwegelbin.openbible.ui.components.SelectableVerseText
 import com.schwegelbin.openbible.ui.components.ViewHighlightSheet
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -150,6 +148,7 @@ fun ReadCard(
     val showVerseNumbers = remember { mutableStateOf(getShowVerseNumbers(context)) }
     val textAlignment = getTextAlignment(context)
     val errorStr = stringResource(R.string.error)
+    val userHasKeypair = remember { mutableStateOf(hasKeypair(context)) }
 
     // Per-verse data
     val (translationName, chapterName, verses) = getVerses(
@@ -163,7 +162,8 @@ fun ReadCard(
     LaunchedEffect(translation, book, chapter) {
         withContext(Dispatchers.IO) {
             try {
-                if (hasKeypair(context)) {
+                userHasKeypair.value = hasKeypair(context)
+                if (userHasKeypair.value) {
                     val dao = AppDatabase.getInstance(context).nostrEventDao()
                     val eventStore = EventStore(dao)
                     // Query highlights by tag prefix for this chapter
@@ -193,6 +193,7 @@ fun ReadCard(
     val showCreateSheet = remember { mutableStateOf(false) }
     val showViewSheet = remember { mutableStateOf(false) }
     val selectedVerseForCreate = remember { mutableStateOf<VerseDisplay?>(null) }
+    val selectedTextForCreate = remember { mutableStateOf("") }
     val selectedHighlight = remember { mutableStateOf<Highlight?>(null) }
 
     val mod = Modifier.fillMaxWidth()
@@ -248,7 +249,7 @@ fun ReadCard(
 
         if (split != SplitScreen.Horizontal) Spacer(Modifier)
 
-        // Content card with per-verse rendering
+        // Content card with per-verse rendering using SelectableVerseText
         ElevatedCard(
             elevation = CardDefaults.cardElevation(6.dp),
             modifier = Modifier
@@ -261,67 +262,35 @@ fun ReadCard(
                     })
                 }
         ) {
-            when (textAlignment) {
-                ReadTextAlignment.Start -> {
-                    SelectionContainer {
-                        Column(
-                            modifier = Modifier
-                                .padding(8.dp)
-                                .verticalScroll(rememberScrollState())
-                        ) {
-                            verses.forEach { verse ->
-                                val highlight = highlights.value[verse.verseNumber]
-                                VerseText(
-                                    verse = verse,
-                                    showVerseNumber = showVerseNumbers.value,
-                                    highlight = highlight,
-                                    textStyle = scaledStyle,
-                                    onAnnotationClick = {
-                                        if (highlight != null) {
-                                            selectedHighlight.value = highlight
-                                            showViewSheet.value = true
-                                        }
-                                    },
-                                    onLongClick = {
-                                        if (hasKeypair(context)) {
-                                            selectedVerseForCreate.value = verse
-                                            showCreateSheet.value = true
-                                        }
-                                    }
-                                )
+            Column(
+                modifier = Modifier
+                    .padding(8.dp)
+                    .verticalScroll(rememberScrollState())
+            ) {
+                verses.forEach { verse ->
+                    val highlight = highlights.value[verse.verseNumber]
+                    SelectableVerseText(
+                        verse = verse,
+                        showVerseNumber = showVerseNumbers.value,
+                        highlight = highlight,
+                        textStyle = if (textAlignment == ReadTextAlignment.Justify) {
+                            scaledStyle.copy(textAlign = TextAlign.Justify)
+                        } else {
+                            scaledStyle
+                        },
+                        hasKeypair = userHasKeypair.value,
+                        onHighlight = { selectedText ->
+                            selectedVerseForCreate.value = verse
+                            selectedTextForCreate.value = selectedText
+                            showCreateSheet.value = true
+                        },
+                        onAnnotationClick = {
+                            if (highlight != null) {
+                                selectedHighlight.value = highlight
+                                showViewSheet.value = true
                             }
                         }
-                    }
-                }
-
-                ReadTextAlignment.Justify -> {
-                    Column(
-                        modifier = Modifier
-                            .padding(8.dp)
-                            .verticalScroll(rememberScrollState())
-                    ) {
-                        verses.forEach { verse ->
-                            val highlight = highlights.value[verse.verseNumber]
-                            VerseText(
-                                verse = verse,
-                                showVerseNumber = showVerseNumbers.value,
-                                highlight = highlight,
-                                textStyle = scaledStyle.copy(textAlign = TextAlign.Justify),
-                                onAnnotationClick = {
-                                    if (highlight != null) {
-                                        selectedHighlight.value = highlight
-                                        showViewSheet.value = true
-                                    }
-                                },
-                                onLongClick = {
-                                    if (hasKeypair(context)) {
-                                        selectedVerseForCreate.value = verse
-                                        showCreateSheet.value = true
-                                    }
-                                }
-                            )
-                        }
-                    }
+                    )
                 }
             }
         }
@@ -330,11 +299,13 @@ fun ReadCard(
     // Create highlight bottom sheet
     if (showCreateSheet.value && selectedVerseForCreate.value != null) {
         val verse = selectedVerseForCreate.value!!
+        val highlightText = selectedTextForCreate.value
         CreateHighlightSheet(
-            selectedText = verse.text,
+            selectedText = highlightText,
             onDismiss = {
                 showCreateSheet.value = false
                 selectedVerseForCreate.value = null
+                selectedTextForCreate.value = ""
             },
             onSave = { note ->
                 scope.launch {
@@ -350,7 +321,7 @@ fun ReadCard(
                                 verse = verse.verseNumber
                             )
                             val hl = repo.saveHighlight(
-                                highlightedText = verse.text,
+                                highlightedText = highlightText,
                                 reference = ref,
                                 context = verse.text,
                                 comment = note.ifBlank { null }
@@ -364,6 +335,7 @@ fun ReadCard(
                 }
                 showCreateSheet.value = false
                 selectedVerseForCreate.value = null
+                selectedTextForCreate.value = ""
             }
         )
     }
