@@ -239,24 +239,24 @@ fun NostrSettingsSection() {
     // -- Identity --
     Text(stringResource(R.string.nostr_identity), style = styleMedium)
     if (hasKey.value && npub.value != null) {
-        val fullNpub = "nostr:npub1${npub.value!!}" // Display format (simplified)
         val hexPubkey = npub.value!!
+        val npubBech32 = com.schwegelbin.openbible.logic.nostr.hexToNpub(hexPubkey)
 
-        // Clickable npub - tap to copy
+        // Clickable npub - tap to copy (copies bech32 format)
         Row(
             Modifier
                 .fillMaxWidth()
                 .clickable {
                     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                    clipboard.setPrimaryClip(ClipData.newPlainText("npub", hexPubkey))
-                    Toast.makeText(context, "Copied to clipboard", Toast.LENGTH_SHORT).show()
+                    clipboard.setPrimaryClip(ClipData.newPlainText("npub", npubBech32))
+                    Toast.makeText(context, "Copied npub to clipboard", Toast.LENGTH_SHORT).show()
                 }
                 .padding(vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Text(
-                text = hexPubkey.take(8) + "..." + hexPubkey.takeLast(8),
+                text = npubBech32.take(12) + "..." + npubBech32.takeLast(8),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.weight(1f)
@@ -282,7 +282,7 @@ fun NostrSettingsSection() {
             }) { Text(stringResource(R.string.nostr_logout)) }
         }
 
-        // QR Code Dialog
+        // QR Code Dialog - shows npub in bech32 format
         if (showQrDialog.value) {
             androidx.compose.material3.AlertDialog(
                 onDismissRequest = { showQrDialog.value = false },
@@ -293,12 +293,12 @@ fun NostrSettingsSection() {
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         com.schwegelbin.openbible.ui.components.QrCode(
-                            content = hexPubkey,
+                            content = npubBech32,
                             size = 200.dp
                         )
                         Spacer(Modifier.height(12.dp))
                         Text(
-                            text = hexPubkey.take(16) + "...",
+                            text = npubBech32.take(20) + "...",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -378,9 +378,17 @@ fun NostrSettingsSection() {
             confirmButton = {
                 androidx.compose.material3.TextButton(onClick = {
                     try {
-                        val hex = keyInput.value.trim().let { raw ->
-                            if (raw.length == 64 && raw.all { it in "0123456789abcdef" }) raw
-                            else throw IllegalArgumentException("Not valid hex")
+                        val raw = keyInput.value.trim()
+                        // Accept both nsec (bech32) and hex format
+                        val hex = when {
+                            raw.startsWith("nsec1") -> {
+                                com.schwegelbin.openbible.logic.nostr.nsecToHex(raw)
+                                    ?: throw IllegalArgumentException("Invalid nsec")
+                            }
+                            raw.length == 64 && raw.all { it in "0123456789abcdefABCDEF" } -> {
+                                raw.lowercase()
+                            }
+                            else -> throw IllegalArgumentException("Invalid key format")
                         }
                         val pubkey = fr.acinq.secp256k1.Secp256k1.pubkeyCreate(hex.hexToByteArray())
                         val xonly = pubkey.copyOfRange(1, 33)

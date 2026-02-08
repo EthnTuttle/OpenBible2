@@ -140,3 +140,151 @@ fun String.hexToByteArray(): ByteArray {
         ((high shl 4) or low).toByte()
     }
 }
+
+// -- Bech32 encoding for npub/nsec --
+
+private const val BECH32_CHARSET = "qpzry9x8gf2tvdw0s3jn54khce6mua7l"
+
+/**
+ * Convert a hex public key to npub format (bech32).
+ */
+fun hexToNpub(hex: String): String {
+    return bech32Encode("npub", hex.hexToByteArray())
+}
+
+/**
+ * Convert a hex private key to nsec format (bech32).
+ */
+fun hexToNsec(hex: String): String {
+    return bech32Encode("nsec", hex.hexToByteArray())
+}
+
+/**
+ * Decode an npub to hex public key.
+ * Returns null if invalid.
+ */
+fun npubToHex(npub: String): String? {
+    return try {
+        val (hrp, data) = bech32Decode(npub)
+        if (hrp != "npub") return null
+        data.toHexString()
+    } catch (_: Exception) {
+        null
+    }
+}
+
+/**
+ * Decode an nsec to hex private key.
+ * Returns null if invalid.
+ */
+fun nsecToHex(nsec: String): String? {
+    return try {
+        val (hrp, data) = bech32Decode(nsec)
+        if (hrp != "nsec") return null
+        data.toHexString()
+    } catch (_: Exception) {
+        null
+    }
+}
+
+/**
+ * Bech32 encode data with a human-readable prefix.
+ */
+private fun bech32Encode(hrp: String, data: ByteArray): String {
+    val converted = convertBits(data, 8, 5, true)
+    val checksum = createChecksum(hrp, converted)
+    val combined = converted + checksum
+    val result = StringBuilder(hrp.length + 1 + combined.size)
+    result.append(hrp)
+    result.append('1')
+    for (b in combined) {
+        result.append(BECH32_CHARSET[b.toInt()])
+    }
+    return result.toString()
+}
+
+/**
+ * Bech32 decode a string to hrp and data.
+ */
+private fun bech32Decode(str: String): Pair<String, ByteArray> {
+    val lower = str.lowercase()
+    val pos = lower.lastIndexOf('1')
+    require(pos >= 1 && pos + 7 <= lower.length) { "Invalid bech32 string" }
+
+    val hrp = lower.substring(0, pos)
+    val dataStr = lower.substring(pos + 1)
+
+    val data = ByteArray(dataStr.length)
+    for (i in dataStr.indices) {
+        val c = BECH32_CHARSET.indexOf(dataStr[i])
+        require(c != -1) { "Invalid bech32 character" }
+        data[i] = c.toByte()
+    }
+
+    require(verifyChecksum(hrp, data)) { "Invalid bech32 checksum" }
+
+    val converted = convertBits(data.copyOfRange(0, data.size - 6), 5, 8, false)
+    return Pair(hrp, converted)
+}
+
+private fun convertBits(data: ByteArray, fromBits: Int, toBits: Int, pad: Boolean): ByteArray {
+    var acc = 0
+    var bits = 0
+    val result = mutableListOf<Byte>()
+    val maxv = (1 shl toBits) - 1
+
+    for (b in data) {
+        val value = b.toInt() and 0xFF
+        acc = (acc shl fromBits) or value
+        bits += fromBits
+        while (bits >= toBits) {
+            bits -= toBits
+            result.add(((acc shr bits) and maxv).toByte())
+        }
+    }
+
+    if (pad && bits > 0) {
+        result.add(((acc shl (toBits - bits)) and maxv).toByte())
+    }
+
+    return result.toByteArray()
+}
+
+private fun polymod(values: ByteArray): Int {
+    val generator = intArrayOf(0x3b6a57b2, 0x26508e6d, 0x1ea119fa, 0x3d4233dd, 0x2a1462b3)
+    var chk = 1
+    for (v in values) {
+        val top = chk shr 25
+        chk = ((chk and 0x1ffffff) shl 5) xor (v.toInt() and 0xFF)
+        for (i in 0..4) {
+            if ((top shr i) and 1 == 1) {
+                chk = chk xor generator[i]
+            }
+        }
+    }
+    return chk
+}
+
+private fun hrpExpand(hrp: String): ByteArray {
+    val result = ByteArray(hrp.length * 2 + 1)
+    for (i in hrp.indices) {
+        result[i] = (hrp[i].code shr 5).toByte()
+        result[hrp.length + 1 + i] = (hrp[i].code and 31).toByte()
+    }
+    result[hrp.length] = 0
+    return result
+}
+
+private fun createChecksum(hrp: String, data: ByteArray): ByteArray {
+    val values = hrpExpand(hrp) + data + byteArrayOf(0, 0, 0, 0, 0, 0)
+    val polymod = polymod(values) xor 1
+    val result = ByteArray(6)
+    for (i in 0..5) {
+        result[i] = ((polymod shr (5 * (5 - i))) and 31).toByte()
+    }
+    return result
+}
+
+private fun verifyChecksum(hrp: String, data: ByteArray): Boolean {
+    return polymod(hrpExpand(hrp) + data) == 1
+}
