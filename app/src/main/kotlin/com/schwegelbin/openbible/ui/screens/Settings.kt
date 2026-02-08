@@ -2,6 +2,9 @@ package com.schwegelbin.openbible.ui.screens
 
 import android.content.Intent
 import android.os.Build
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -211,6 +214,24 @@ fun NostrSettingsSection() {
     val showImportDialog = remember { mutableStateOf(false) }
     val styleMedium = MaterialTheme.typography.titleMedium
 
+    // Amber result launcher
+    val amberLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        // Amber returns the public key in the result
+        val signature = result.data?.getStringExtra("signature")
+        val pubkey = result.data?.getStringExtra("pubkey")
+        if (pubkey != null && pubkey.length == 64) {
+            // Store as pubkey-only (no private key - signing will use Amber)
+            com.schwegelbin.openbible.logic.nostr.storePublicKeyOnly(context, pubkey)
+            hasKey.value = true
+            npub.value = pubkey
+            Toast.makeText(context, "Connected to Amber", Toast.LENGTH_SHORT).show()
+        } else {
+            Toast.makeText(context, "Failed to get public key from Amber", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     // -- Identity --
     Text(stringResource(R.string.nostr_identity), style = styleMedium)
     if (hasKey.value && npub.value != null) {
@@ -237,7 +258,7 @@ fun NostrSettingsSection() {
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             OutlinedButton(onClick = {
-                val (priv, pub) = com.schwegelbin.openbible.logic.nostr.getOrCreateKeypair(context)
+                val (_, pub) = com.schwegelbin.openbible.logic.nostr.getOrCreateKeypair(context)
                 hasKey.value = true
                 npub.value = pub
             }) { Text(stringResource(R.string.nostr_generate_key)) }
@@ -246,12 +267,21 @@ fun NostrSettingsSection() {
             }) { Text(stringResource(R.string.nostr_import_key)) }
         }
         Spacer(Modifier.height(4.dp))
-        val amberSigner = com.schwegelbin.openbible.logic.nostr.AmberSigner(context, "")
-        OutlinedButton(onClick = {
-            if (amberSigner.isAvailable()) {
-                // TODO: launch Amber get_public_key intent
+        val amberSigner = remember { com.schwegelbin.openbible.logic.nostr.AmberSigner(context, "") }
+        OutlinedButton(
+            onClick = {
+                if (amberSigner.isAvailable()) {
+                    try {
+                        val intent = amberSigner.createGetPublicKeyIntent()
+                        amberLauncher.launch(intent)
+                    } catch (e: Exception) {
+                        Toast.makeText(context, "Failed to launch Amber: ${e.message}", Toast.LENGTH_SHORT).show()
+                    }
+                } else {
+                    Toast.makeText(context, "Amber is not installed", Toast.LENGTH_SHORT).show()
+                }
             }
-        }) { Text(stringResource(R.string.nostr_connect_amber)) }
+        ) { Text(stringResource(R.string.nostr_connect_amber)) }
     }
 
     // Import nsec dialog

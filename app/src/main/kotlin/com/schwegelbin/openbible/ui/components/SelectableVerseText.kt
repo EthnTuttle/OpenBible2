@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
@@ -49,12 +50,18 @@ fun SelectableVerseText(
     val textColor = MaterialTheme.colorScheme.onSurface
     val fontSize = textStyle.fontSize.value
     val lineHeight = textStyle.lineHeight.value
+    val textColorArgb = textColor.toArgb()
 
     val displayText = if (showVerseNumber) {
         "${verse.verseNumber} ${verse.text}".trim()
     } else {
         verse.text
     }
+
+    // Use remember with keys to hold mutable references that the callback can access
+    val callbackState = remember { CallbackState() }
+    callbackState.hasKeypair = hasKeypair
+    callbackState.onHighlight = onHighlight
 
     Box(
         modifier = Modifier
@@ -70,20 +77,22 @@ fun SelectableVerseText(
                 TextView(context).apply {
                     setTextIsSelectable(true)
                     textSize = fontSize
-                    setTextColor(textColor.toArgb())
+                    setTextColor(textColorArgb)
                     setLineSpacing(0f, lineHeight / fontSize)
                     typeface = Typeface.DEFAULT
+                    text = displayText
 
                     customSelectionActionModeCallback = object : ActionMode.Callback {
                         override fun onCreateActionMode(mode: ActionMode, menu: Menu): Boolean {
-                            if (hasKeypair) {
-                                menu.add(Menu.NONE, MENU_HIGHLIGHT, 10, "Highlight")
-                                    .setShowAsAction(MenuItem.SHOW_AS_ACTION_IF_ROOM)
-                            }
+                            // Always add Highlight - we check hasKeypair when clicked
+                            menu.add(Menu.NONE, MENU_HIGHLIGHT, 0, "Highlight")
+                                .setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
                             return true
                         }
 
-                        override fun onPrepareActionMode(mode: ActionMode, menu: Menu): Boolean = false
+                        override fun onPrepareActionMode(mode: ActionMode, menu: Menu): Boolean {
+                            return false
+                        }
 
                         override fun onActionItemClicked(mode: ActionMode, item: MenuItem): Boolean {
                             return when (item.itemId) {
@@ -92,7 +101,7 @@ fun SelectableVerseText(
                                     val end = selectionEnd
                                     if (start >= 0 && end > start) {
                                         val selected = text.toString().substring(start, end)
-                                        onHighlight(selected)
+                                        callbackState.onHighlight?.invoke(selected)
                                     }
                                     mode.finish()
                                     true
@@ -108,7 +117,7 @@ fun SelectableVerseText(
             update = { textView ->
                 textView.text = displayText
                 textView.textSize = fontSize
-                textView.setTextColor(textColor.toArgb())
+                textView.setTextColor(textColorArgb)
             }
         )
 
@@ -120,4 +129,13 @@ fun SelectableVerseText(
             )
         }
     }
+}
+
+/**
+ * Mutable state holder for the ActionMode callback.
+ * This allows the callback to access current values without recreating the TextView.
+ */
+private class CallbackState {
+    var hasKeypair: Boolean = false
+    var onHighlight: ((String) -> Unit)? = null
 }

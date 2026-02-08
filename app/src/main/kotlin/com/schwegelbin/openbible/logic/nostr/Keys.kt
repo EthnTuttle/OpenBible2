@@ -88,6 +88,23 @@ fun storeKeypair(context: Context, privateKeyHex: String, publicKeyHex: String) 
 }
 
 /**
+ * Store only a public key (for external signer like Amber).
+ * The private key is managed by the external signer.
+ */
+fun storePublicKeyOnly(context: Context, publicKeyHex: String) {
+    val prefs = getEncryptedPrefs(context)
+    prefs.edit().remove(KEY_NSEC).putString(KEY_NPUB, publicKeyHex).apply()
+}
+
+/**
+ * Check if using an external signer (has pubkey but no privkey).
+ */
+fun isUsingExternalSigner(context: Context): Boolean {
+    val prefs = getEncryptedPrefs(context)
+    return prefs.getString(KEY_NPUB, null) != null && prefs.getString(KEY_NSEC, null) == null
+}
+
+/**
  * Delete the stored keypair.
  */
 fun deleteKeypair(context: Context) {
@@ -96,10 +113,10 @@ fun deleteKeypair(context: Context) {
 }
 
 /**
- * Check if a keypair is stored.
+ * Check if a keypair (or public key for external signer) is stored.
  */
 fun hasKeypair(context: Context): Boolean {
-    return getEncryptedPrefs(context).getString(KEY_NSEC, null) != null
+    return getEncryptedPrefs(context).getString(KEY_NPUB, null) != null
 }
 
 // -- Hex utilities --
