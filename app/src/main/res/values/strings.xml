@@ -87,6 +87,9 @@
     <string name="nostr_add_relay">Add relay</string>
     <string name="nostr_relay_hint">wss://relay.example.com</string>
     <string name="nostr_amber_not_installed">Amber not installed</string>
+    <string name="nostr_tap_to_copy">Tap to copy</string>
+    <string name="nostr_show_qr">Show QR</string>
+    <string name="nostr_your_profile">Your Profile</string>
     <string name="app_name" translatable="false">OpenBible</string>
     <string name="google_play" translatable="false">Google Play</string>
     <string name="source_getbible" translatable="false">getBible</string>

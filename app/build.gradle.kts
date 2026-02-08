@@ -80,4 +80,5 @@ dependencies {
     implementation(libs.secp256k1.kmp.jni.android)
     implementation(libs.negentropy.kmp)
     implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.zxing.core)
 }

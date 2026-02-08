@@ -1,10 +1,14 @@
 package com.schwegelbin.openbible.ui.screens
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -212,6 +216,7 @@ fun NostrSettingsSection() {
     val hasKey = remember { mutableStateOf(com.schwegelbin.openbible.logic.nostr.hasKeypair(context)) }
     val npub = remember { mutableStateOf(com.schwegelbin.openbible.logic.nostr.getPublicKeyHex(context)) }
     val showImportDialog = remember { mutableStateOf(false) }
+    val showQrDialog = remember { mutableStateOf(false) }
     val styleMedium = MaterialTheme.typography.titleMedium
 
     // Amber result launcher
@@ -219,7 +224,6 @@ fun NostrSettingsSection() {
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
         // Amber returns the public key in the result
-        val signature = result.data?.getStringExtra("signature")
         val pubkey = result.data?.getStringExtra("pubkey")
         if (pubkey != null && pubkey.length == 64) {
             // Store as pubkey-only (no private key - signing will use Amber)
@@ -235,17 +239,78 @@ fun NostrSettingsSection() {
     // -- Identity --
     Text(stringResource(R.string.nostr_identity), style = styleMedium)
     if (hasKey.value && npub.value != null) {
-        Text(
-            text = npub.value!!.take(16) + "...",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.padding(vertical = 4.dp)
-        )
-        OutlinedButton(onClick = {
-            com.schwegelbin.openbible.logic.nostr.deleteKeypair(context)
-            hasKey.value = false
-            npub.value = null
-        }) { Text(stringResource(R.string.nostr_logout)) }
+        val fullNpub = "nostr:npub1${npub.value!!}" // Display format (simplified)
+        val hexPubkey = npub.value!!
+
+        // Clickable npub - tap to copy
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clickable {
+                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    clipboard.setPrimaryClip(ClipData.newPlainText("npub", hexPubkey))
+                    Toast.makeText(context, "Copied to clipboard", Toast.LENGTH_SHORT).show()
+                }
+                .padding(vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = hexPubkey.take(8) + "..." + hexPubkey.takeLast(8),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.weight(1f)
+            )
+            Text(
+                text = stringResource(R.string.nostr_tap_to_copy),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            OutlinedButton(onClick = { showQrDialog.value = true }) {
+                Text(stringResource(R.string.nostr_show_qr))
+            }
+            OutlinedButton(onClick = {
+                com.schwegelbin.openbible.logic.nostr.deleteKeypair(context)
+                hasKey.value = false
+                npub.value = null
+            }) { Text(stringResource(R.string.nostr_logout)) }
+        }
+
+        // QR Code Dialog
+        if (showQrDialog.value) {
+            androidx.compose.material3.AlertDialog(
+                onDismissRequest = { showQrDialog.value = false },
+                title = { Text(stringResource(R.string.nostr_your_profile)) },
+                text = {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        com.schwegelbin.openbible.ui.components.QrCode(
+                            content = hexPubkey,
+                            size = 200.dp
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        Text(
+                            text = hexPubkey.take(16) + "...",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                },
+                confirmButton = {
+                    androidx.compose.material3.TextButton(onClick = { showQrDialog.value = false }) {
+                        Text(stringResource(R.string.close))
+                    }
+                }
+            )
+        }
     } else {
         Text(
             text = stringResource(R.string.nostr_no_key),
