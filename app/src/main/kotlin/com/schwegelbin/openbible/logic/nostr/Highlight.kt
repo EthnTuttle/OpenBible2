@@ -64,8 +64,11 @@ data class Highlight(
     val highlightedText: String,
     val comment: String?,
     val context: String?,
-    val reference: BibleReference?
-)
+    val reference: BibleReference?,
+    val publishedRelays: List<String> = emptyList()
+) {
+    val isPublished: Boolean get() = publishedRelays.isNotEmpty()
+}
 
 /**
  * Create an unsigned NIP-84 highlight event.

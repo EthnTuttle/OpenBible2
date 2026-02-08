@@ -69,6 +69,7 @@
     <string name="highlight_publish_all">Publish All</string>
     <string name="highlight_no_highlights">No highlights yet</string>
     <string name="highlight_local_only">Local only</string>
+    <string name="highlight_published">Published</string>
     <string name="nostr">Nostr</string>
     <string name="nostr_identity">Identity</string>
     <string name="nostr_signer">Signer</string>

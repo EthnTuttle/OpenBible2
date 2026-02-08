@@ -44,3 +44,17 @@ data class NostrEventTagEntity(
     val tag_name: String,
     val tag_value: String
 )
+
+/**
+ * Room entity tracking which events have been published to which relays.
+ * Used to show "published" vs "local only" status.
+ */
+@Entity(
+    tableName = "published_events",
+    primaryKeys = ["event_id", "relay_url"]
+)
+data class PublishedEventEntity(
+    val event_id: String,
+    val relay_url: String,
+    val published_at: Long = System.currentTimeMillis()
+)

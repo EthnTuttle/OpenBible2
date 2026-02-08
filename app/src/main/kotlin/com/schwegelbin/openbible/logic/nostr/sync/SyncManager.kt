@@ -7,6 +7,8 @@ import com.schwegelbin.openbible.logic.nostr.Relay
 import com.schwegelbin.openbible.logic.nostr.RelayMessage
 import com.schwegelbin.openbible.logic.nostr.RelayPool
 import com.schwegelbin.openbible.logic.nostr.RelayState
+import com.schwegelbin.openbible.logic.nostr.db.NostrEventDao
+import com.schwegelbin.openbible.logic.nostr.db.PublishedEventEntity
 import com.schwegelbin.openbible.logic.nostr.embedded.EmbeddedRelay
 import com.schwegelbin.openbible.logic.nostr.embedded.EventStore
 import kotlinx.coroutines.CoroutineScope
@@ -14,6 +16,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -28,6 +31,7 @@ private const val SYNC_INTERVAL_MS = 15 * 60 * 1000L  // 15 minutes
 class SyncManager(
     private val embeddedRelay: EmbeddedRelay,
     private val relayPool: RelayPool,
+    private val dao: NostrEventDao,
     private val scope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 ) {
     private val eventStore: EventStore = embeddedRelay.getEventStore()
@@ -126,22 +130,74 @@ class SyncManager(
     /**
      * Publish a specific event to given relay URLs.
      * Used when user explicitly publishes a highlight.
+     * Returns list of relay URLs that successfully accepted the event.
      */
-    suspend fun publishToRelays(eventId: String, relayUrls: List<String>) {
+    suspend fun publishToRelays(eventId: String, relayUrls: List<String>): List<String> {
         val event = eventStore.getEvent(eventId) ?: run {
             Log.w(TAG, "Event $eventId not found for publishing")
-            return
+            return emptyList()
         }
 
+        val successfulRelays = mutableListOf<String>()
+
         relayUrls.forEach { url ->
-            relayPool.getRelay(url)?.let { relay ->
-                if (relay.currentState == RelayState.CONNECTED) {
-                    relay.sendEvent(event)
-                    Log.d(TAG, "Published event $eventId to $url")
-                } else {
-                    Log.w(TAG, "Cannot publish to $url: not connected")
+            val relay = relayPool.getRelay(url)
+            if (relay == null) {
+                Log.w(TAG, "Relay not found in pool: $url")
+                return@forEach
+            }
+
+            // Connect if not connected
+            if (relay.currentState != RelayState.CONNECTED) {
+                relay.connect()
+                // Wait for connection with timeout
+                val connected = withTimeoutOrNull(5000L) {
+                    relay.state.first { it == RelayState.CONNECTED }
+                }
+                if (connected == null) {
+                    Log.w(TAG, "Failed to connect to $url")
+                    return@forEach
                 }
             }
+
+            // Send the event
+            val sent = relay.sendEvent(event)
+            if (!sent) {
+                Log.w(TAG, "Failed to send event to $url")
+                return@forEach
+            }
+
+            // Wait for OK response with timeout
+            val okReceived = withTimeoutOrNull(10000L) {
+                relay.messages.firstOrNull { msg ->
+                    msg is RelayMessage.OkMsg && msg.eventId == eventId
+                } as? RelayMessage.OkMsg
+            }
+
+            if (okReceived?.accepted == true) {
+                Log.d(TAG, "Published event $eventId to $url")
+                successfulRelays.add(url)
+                // Record the publish
+                dao.insertPublishedEvent(PublishedEventEntity(eventId, url))
+            } else {
+                Log.w(TAG, "Event $eventId not accepted by $url: ${okReceived?.message}")
+            }
         }
+
+        return successfulRelays
+    }
+
+    /**
+     * Check if an event has been published to any relay.
+     */
+    suspend fun isPublished(eventId: String): Boolean {
+        return dao.isEventPublished(eventId)
+    }
+
+    /**
+     * Get the list of relays an event has been published to.
+     */
+    suspend fun getPublishedRelays(eventId: String): List<String> {
+        return dao.getPublishedRelays(eventId)
     }
 }

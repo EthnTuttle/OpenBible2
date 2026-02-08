@@ -311,9 +311,10 @@ fun ReadCard(
                 scope.launch {
                     withContext(Dispatchers.IO) {
                         try {
+                            val dao = AppDatabase.getInstance(context).nostrEventDao()
                             val signer = LocalSigner(context)
                             val embeddedRelay = EmbeddedRelay(context)
-                            val repo = HighlightRepository(embeddedRelay, signer)
+                            val repo = HighlightRepository(embeddedRelay, signer, dao)
                             val ref = BibleReference(
                                 translation = translation,
                                 book = verse.bookName,
@@ -358,9 +359,10 @@ fun ReadCard(
                 scope.launch {
                     withContext(Dispatchers.IO) {
                         try {
+                            val dao = AppDatabase.getInstance(context).nostrEventDao()
                             val signer = LocalSigner(context)
                             val embeddedRelay = EmbeddedRelay(context)
-                            val repo = HighlightRepository(embeddedRelay, signer)
+                            val repo = HighlightRepository(embeddedRelay, signer, dao)
                             repo.deleteHighlight(hl.eventId)
                             val ref = hl.reference
                             if (ref != null) {

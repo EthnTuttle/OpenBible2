@@ -1,7 +1,10 @@
 package com.schwegelbin.openbible.ui.screens
 
+import android.widget.Toast
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -9,8 +12,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Publish
@@ -29,6 +34,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontStyle
@@ -36,14 +43,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.schwegelbin.openbible.R
+import com.schwegelbin.openbible.logic.getPublicRelays
 import com.schwegelbin.openbible.logic.nostr.Highlight
 import com.schwegelbin.openbible.logic.nostr.HighlightRepository
 import com.schwegelbin.openbible.logic.nostr.LocalSigner
+import com.schwegelbin.openbible.logic.nostr.RelayPool
 import com.schwegelbin.openbible.logic.nostr.db.AppDatabase
 import com.schwegelbin.openbible.logic.nostr.embedded.EmbeddedRelay
-import com.schwegelbin.openbible.logic.nostr.embedded.EventStore
 import com.schwegelbin.openbible.logic.nostr.hasKeypair
-import com.schwegelbin.openbible.logic.nostr.toHighlight
+import com.schwegelbin.openbible.logic.nostr.sync.SyncManager
 import com.schwegelbin.openbible.ui.components.ViewHighlightSheet
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -57,22 +65,37 @@ fun HighlightsScreen(onNavigateToRead: () -> Unit) {
     val highlights = remember { mutableStateOf<List<Highlight>>(emptyList()) }
     val selectedHighlight = remember { mutableStateOf<Highlight?>(null) }
     val showSheet = remember { mutableStateOf(false) }
+    val isPublishing = remember { mutableStateOf(false) }
 
-    // Load all highlights
+    // Load all highlights with published status
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
             try {
                 if (hasKeypair(context)) {
                     val dao = AppDatabase.getInstance(context).nostrEventDao()
-                    val eventStore = EventStore(dao)
-                    val filter = com.schwegelbin.openbible.logic.nostr.NostrFilter(
-                        kinds = listOf(9802)
-                    )
-                    highlights.value = eventStore.queryEvents(filter)
-                        .mapNotNull { it.toHighlight() }
+                    val signer = LocalSigner(context)
+                    val embeddedRelay = EmbeddedRelay(context)
+                    val repo = HighlightRepository(embeddedRelay, signer, dao)
+                    highlights.value = repo.getAllHighlights()
                         .sortedByDescending { it.createdAt }
                 }
             } catch (_: Exception) { }
+        }
+    }
+
+    // Reload highlights when publishing completes
+    fun reloadHighlights() {
+        scope.launch {
+            withContext(Dispatchers.IO) {
+                try {
+                    val dao = AppDatabase.getInstance(context).nostrEventDao()
+                    val signer = LocalSigner(context)
+                    val embeddedRelay = EmbeddedRelay(context)
+                    val repo = HighlightRepository(embeddedRelay, signer, dao)
+                    highlights.value = repo.getAllHighlights()
+                        .sortedByDescending { it.createdAt }
+                } catch (_: Exception) { }
+            }
         }
     }
 
@@ -122,24 +145,64 @@ fun HighlightsScreen(onNavigateToRead: () -> Unit) {
 
     // View highlight bottom sheet
     if (showSheet.value && selectedHighlight.value != null) {
+        val hl = selectedHighlight.value!!
         ViewHighlightSheet(
-            highlight = selectedHighlight.value!!,
+            highlight = hl,
             onDismiss = {
                 showSheet.value = false
                 selectedHighlight.value = null
             },
             onPublish = {
-                // TODO: Wire up publish to public relays
-                showSheet.value = false
-            },
-            onDelete = {
-                val hl = selectedHighlight.value!!
+                val relayUrls = getPublicRelays(context).toList()
+                if (relayUrls.isEmpty()) {
+                    Toast.makeText(context, "No public relays configured", Toast.LENGTH_SHORT).show()
+                    return@ViewHighlightSheet
+                }
+
+                isPublishing.value = true
                 scope.launch {
                     withContext(Dispatchers.IO) {
                         try {
+                            val dao = AppDatabase.getInstance(context).nostrEventDao()
                             val signer = LocalSigner(context)
                             val embeddedRelay = EmbeddedRelay(context)
-                            val repo = HighlightRepository(embeddedRelay, signer)
+                            val relayPool = RelayPool()
+                            relayUrls.forEach { relayPool.addRelay(it) }
+                            relayPool.connectAll()
+
+                            val syncManager = SyncManager(embeddedRelay, relayPool, dao)
+                            val repo = HighlightRepository(embeddedRelay, signer, dao, syncManager)
+
+                            val published = repo.publishHighlight(hl.eventId, relayUrls)
+
+                            withContext(Dispatchers.Main) {
+                                if (published.isNotEmpty()) {
+                                    Toast.makeText(context, "Published to ${published.size} relay(s)", Toast.LENGTH_SHORT).show()
+                                    reloadHighlights()
+                                } else {
+                                    Toast.makeText(context, "Failed to publish", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        } catch (e: Exception) {
+                            withContext(Dispatchers.Main) {
+                                Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+                            }
+                        } finally {
+                            isPublishing.value = false
+                        }
+                    }
+                }
+                showSheet.value = false
+                selectedHighlight.value = null
+            },
+            onDelete = {
+                scope.launch {
+                    withContext(Dispatchers.IO) {
+                        try {
+                            val dao = AppDatabase.getInstance(context).nostrEventDao()
+                            val signer = LocalSigner(context)
+                            val embeddedRelay = EmbeddedRelay(context)
+                            val repo = HighlightRepository(embeddedRelay, signer, dao)
                             repo.deleteHighlight(hl.eventId)
                             highlights.value = highlights.value.filter { it.eventId != hl.eventId }
                         } catch (_: Exception) { }
@@ -195,16 +258,36 @@ fun HighlightCard(
                 )
             }
 
-            // Status badge
+            // Status badge with indicator dot
             Spacer(modifier = Modifier.height(4.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically
             ) {
+                // Status indicator dot
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (highlight.isPublished) Color(0xFF4CAF50) // Green
+                            else MaterialTheme.colorScheme.outline
+                        )
+                )
+                Spacer(modifier = Modifier.padding(horizontal = 4.dp))
                 Text(
-                    text = stringResource(R.string.highlight_local_only),
+                    text = if (highlight.isPublished) {
+                        stringResource(R.string.highlight_published)
+                    } else {
+                        stringResource(R.string.highlight_local_only)
+                    },
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.outline
+                    color = if (highlight.isPublished) {
+                        Color(0xFF4CAF50)
+                    } else {
+                        MaterialTheme.colorScheme.outline
+                    }
                 )
             }
         }

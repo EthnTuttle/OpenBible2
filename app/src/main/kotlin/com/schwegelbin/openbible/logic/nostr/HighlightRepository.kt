@@ -1,6 +1,7 @@
 package com.schwegelbin.openbible.logic.nostr
 
 import android.content.Context
+import com.schwegelbin.openbible.logic.nostr.db.NostrEventDao
 import com.schwegelbin.openbible.logic.nostr.embedded.EmbeddedRelay
 import com.schwegelbin.openbible.logic.nostr.embedded.EventStore
 import com.schwegelbin.openbible.logic.nostr.sync.SyncManager
@@ -13,6 +14,7 @@ import com.schwegelbin.openbible.logic.nostr.sync.SyncManager
 class HighlightRepository(
     private val embeddedRelay: EmbeddedRelay,
     private val signer: Signer,
+    private val dao: NostrEventDao,
     private val syncManager: SyncManager? = null
 ) {
     private val eventStore: EventStore = embeddedRelay.getEventStore()
@@ -78,10 +80,16 @@ class HighlightRepository(
 
     /**
      * Get all highlights, grouped by reference.
+     * Includes published status for each highlight.
      */
     suspend fun getAllHighlights(): List<Highlight> {
         val filter = NostrFilter(kinds = listOf(HIGHLIGHT_KIND))
-        return eventStore.queryEvents(filter).mapNotNull { it.toHighlight() }
+        return eventStore.queryEvents(filter).mapNotNull { event ->
+            event.toHighlight()?.let { highlight ->
+                val publishedRelays = dao.getPublishedRelays(highlight.eventId)
+                highlight.copy(publishedRelays = publishedRelays)
+            }
+        }
     }
 
     /**
@@ -102,18 +110,30 @@ class HighlightRepository(
 
     /**
      * Publish a highlight to public relays.
+     * Returns list of relay URLs that successfully accepted the event.
      */
-    suspend fun publishHighlight(eventId: String, relayUrls: List<String>) {
-        syncManager?.publishToRelays(eventId, relayUrls)
+    suspend fun publishHighlight(eventId: String, relayUrls: List<String>): List<String> {
+        return syncManager?.publishToRelays(eventId, relayUrls) ?: emptyList()
     }
 
     /**
      * Publish all local highlights to public relays.
+     * Returns the total number of successful publishes.
      */
-    suspend fun publishAllHighlights(relayUrls: List<String>) {
+    suspend fun publishAllHighlights(relayUrls: List<String>): Int {
+        var successCount = 0
         val highlights = getAllHighlights()
         highlights.forEach { highlight ->
-            syncManager?.publishToRelays(highlight.eventId, relayUrls)
+            val published = syncManager?.publishToRelays(highlight.eventId, relayUrls) ?: emptyList()
+            successCount += published.size
         }
+        return successCount
+    }
+
+    /**
+     * Check if a highlight has been published.
+     */
+    suspend fun isPublished(eventId: String): Boolean {
+        return dao.isEventPublished(eventId)
     }
 }

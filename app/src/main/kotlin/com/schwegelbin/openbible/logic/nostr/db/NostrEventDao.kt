@@ -94,6 +94,20 @@ interface NostrEventDao {
 
     @Query("SELECT COUNT(*) FROM nostr_events WHERE kind = :kind")
     suspend fun getEventCountByKind(kind: Int): Int
+
+    // -- Published events tracking --
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertPublishedEvent(published: PublishedEventEntity)
+
+    @Query("SELECT relay_url FROM published_events WHERE event_id = :eventId")
+    suspend fun getPublishedRelays(eventId: String): List<String>
+
+    @Query("SELECT COUNT(*) > 0 FROM published_events WHERE event_id = :eventId")
+    suspend fun isEventPublished(eventId: String): Boolean
+
+    @Query("DELETE FROM published_events WHERE event_id = :eventId")
+    suspend fun deletePublishedRecords(eventId: String)
 }
 
 /**

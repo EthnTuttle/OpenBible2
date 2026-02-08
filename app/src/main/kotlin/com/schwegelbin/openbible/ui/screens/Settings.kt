@@ -8,15 +8,19 @@ import android.os.Build
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -37,11 +41,14 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -428,20 +435,72 @@ fun NostrSettingsSection() {
 
     Spacer(Modifier.height(12.dp))
 
-    // -- Public relays (add/remove list) --
+    // -- Public relays (add/remove list with status indicators) --
     Text(stringResource(R.string.nostr_public_relays), style = styleMedium)
     val relays = remember {
         mutableStateOf(com.schwegelbin.openbible.logic.getPublicRelays(context).toMutableList())
     }
+    val relayStates = remember {
+        mutableStateOf<Map<String, com.schwegelbin.openbible.logic.nostr.RelayState>>(emptyMap())
+    }
+
+    // Test relay connections
+    LaunchedEffect(relays.value) {
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val states = mutableMapOf<String, com.schwegelbin.openbible.logic.nostr.RelayState>()
+            relays.value.forEach { url ->
+                states[url] = com.schwegelbin.openbible.logic.nostr.RelayState.CONNECTING
+            }
+            relayStates.value = states.toMap()
+
+            relays.value.forEach { url ->
+                try {
+                    val relay = com.schwegelbin.openbible.logic.nostr.Relay(url)
+                    relay.connect()
+                    // Wait for connection result
+                    kotlinx.coroutines.withTimeoutOrNull(5000L) {
+                        relay.state.collect { state ->
+                            if (state == com.schwegelbin.openbible.logic.nostr.RelayState.CONNECTED ||
+                                state == com.schwegelbin.openbible.logic.nostr.RelayState.DISCONNECTED) {
+                                relayStates.value = relayStates.value + (url to state)
+                                relay.disconnect()
+                                return@collect
+                            }
+                        }
+                    } ?: run {
+                        relayStates.value = relayStates.value + (url to com.schwegelbin.openbible.logic.nostr.RelayState.DISCONNECTED)
+                    }
+                } catch (_: Exception) {
+                    relayStates.value = relayStates.value + (url to com.schwegelbin.openbible.logic.nostr.RelayState.DISCONNECTED)
+                }
+            }
+        }
+    }
+
     relays.value.forEachIndexed { index, relay ->
         Row(
-            Modifier.fillMaxWidth().padding(vertical = 2.dp),
+            Modifier.fillMaxWidth().padding(vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            // Status indicator
+            val state = relayStates.value[relay] ?: com.schwegelbin.openbible.logic.nostr.RelayState.DISCONNECTED
+            val statusColor = when (state) {
+                com.schwegelbin.openbible.logic.nostr.RelayState.CONNECTED -> Color(0xFF4CAF50) // Green
+                com.schwegelbin.openbible.logic.nostr.RelayState.CONNECTING -> Color(0xFFFFC107) // Yellow
+                com.schwegelbin.openbible.logic.nostr.RelayState.DISCONNECTED -> Color(0xFFF44336) // Red
+            }
+            Box(
+                modifier = Modifier
+                    .padding(end = 8.dp)
+                    .size(10.dp)
+                    .clip(CircleShape)
+                    .background(statusColor)
+            )
             Text(
-                text = relay,
+                text = relay.removePrefix("wss://").removePrefix("ws://"),
                 style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.weight(1f),
+                maxLines = 1
             )
             IconButton(onClick = {
                 val updated = relays.value.toMutableList()
