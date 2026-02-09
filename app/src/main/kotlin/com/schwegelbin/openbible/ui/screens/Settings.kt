@@ -457,19 +457,31 @@ fun NostrSettingsSection() {
                 try {
                     val relay = com.schwegelbin.openbible.logic.nostr.Relay(url)
                     relay.connect()
-                    // Wait for connection result
-                    kotlinx.coroutines.withTimeoutOrNull(5000L) {
-                        relay.state.collect { state ->
-                            if (state == com.schwegelbin.openbible.logic.nostr.RelayState.CONNECTED ||
-                                state == com.schwegelbin.openbible.logic.nostr.RelayState.DISCONNECTED) {
-                                relayStates.value = relayStates.value + (url to state)
+                    // Poll for connection result
+                    var wasConnecting = false
+                    repeat(50) { // 5 seconds max (50 * 100ms)
+                        kotlinx.coroutines.delay(100)
+                        when (relay.currentState) {
+                            com.schwegelbin.openbible.logic.nostr.RelayState.CONNECTING -> {
+                                wasConnecting = true
+                            }
+                            com.schwegelbin.openbible.logic.nostr.RelayState.CONNECTED -> {
+                                relayStates.value = relayStates.value + (url to com.schwegelbin.openbible.logic.nostr.RelayState.CONNECTED)
                                 relay.disconnect()
-                                return@collect
+                                return@forEach
+                            }
+                            com.schwegelbin.openbible.logic.nostr.RelayState.DISCONNECTED -> {
+                                // Only mark disconnected if we previously saw CONNECTING (actual failure)
+                                if (wasConnecting) {
+                                    relayStates.value = relayStates.value + (url to com.schwegelbin.openbible.logic.nostr.RelayState.DISCONNECTED)
+                                    return@forEach
+                                }
                             }
                         }
-                    } ?: run {
-                        relayStates.value = relayStates.value + (url to com.schwegelbin.openbible.logic.nostr.RelayState.DISCONNECTED)
                     }
+                    // Timeout - use final state
+                    relayStates.value = relayStates.value + (url to relay.currentState)
+                    relay.disconnect()
                 } catch (_: Exception) {
                     relayStates.value = relayStates.value + (url to com.schwegelbin.openbible.logic.nostr.RelayState.DISCONNECTED)
                 }

@@ -110,10 +110,41 @@ class HighlightRepository(
 
     /**
      * Publish a highlight to public relays.
-     * Returns list of relay URLs that successfully accepted the event.
+     * Also publishes a kind 1 note quoting the highlight for broader visibility.
+     * Returns list of relay URLs that successfully accepted the highlight event.
      */
     suspend fun publishHighlight(eventId: String, relayUrls: List<String>): List<String> {
-        return syncManager?.publishToRelays(eventId, relayUrls) ?: emptyList()
+        val sm = syncManager ?: return emptyList()
+        
+        // Publish the highlight event
+        val publishedRelays = sm.publishToRelays(eventId, relayUrls)
+        
+        // If successful, also publish a kind 1 note quoting the highlight
+        if (publishedRelays.isNotEmpty()) {
+            val highlightEvent = eventStore.getEvent(eventId)
+            val highlight = highlightEvent?.toHighlight()
+            
+            if (highlight != null && highlight.reference != null) {
+                val relayHint = publishedRelays.firstOrNull()
+                val quoteUnsigned = createHighlightQuoteNote(
+                    pubkey = signer.publicKeyHex,
+                    highlightEventId = eventId,
+                    highlightedText = highlight.highlightedText,
+                    reference = highlight.reference,
+                    comment = highlight.comment,
+                    relayHint = relayHint
+                )
+                
+                val quoteSigned = signer.sign(quoteUnsigned)
+                if (quoteSigned != null) {
+                    // Store locally and publish
+                    eventStore.storeEvent(quoteSigned)
+                    sm.publishToRelays(quoteSigned.id, relayUrls)
+                }
+            }
+        }
+        
+        return publishedRelays
     }
 
     /**

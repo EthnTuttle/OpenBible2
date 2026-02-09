@@ -55,6 +55,8 @@ import com.schwegelbin.openbible.logic.SplitScreen
 import com.schwegelbin.openbible.logic.VerseDisplay
 import com.schwegelbin.openbible.logic.checkTranslation
 import com.schwegelbin.openbible.logic.getAppName
+import com.schwegelbin.openbible.logic.getAutoPublish
+import com.schwegelbin.openbible.logic.getPublicRelays
 import com.schwegelbin.openbible.logic.getFontSize
 import com.schwegelbin.openbible.logic.getSelection
 import com.schwegelbin.openbible.logic.getShowVerseNumbers
@@ -66,9 +68,11 @@ import com.schwegelbin.openbible.logic.nostr.Highlight
 import com.schwegelbin.openbible.logic.nostr.HighlightRepository
 import com.schwegelbin.openbible.logic.nostr.LocalSigner
 import com.schwegelbin.openbible.logic.nostr.toHighlight
+import com.schwegelbin.openbible.logic.nostr.RelayPool
 import com.schwegelbin.openbible.logic.nostr.db.AppDatabase
 import com.schwegelbin.openbible.logic.nostr.embedded.EmbeddedRelay
 import com.schwegelbin.openbible.logic.nostr.embedded.EventStore
+import com.schwegelbin.openbible.logic.nostr.sync.SyncManager
 import com.schwegelbin.openbible.logic.nostr.encodeNevent
 import com.schwegelbin.openbible.logic.nostr.getPublicKeyHex
 import com.schwegelbin.openbible.logic.nostr.hasKeypair
@@ -170,8 +174,9 @@ fun ReadCard(
                     val dao = AppDatabase.getInstance(context).nostrEventDao()
                     val eventStore = EventStore(dao)
                     // Query highlights by tag prefix for this chapter
+                    // Note: chapter is 0-indexed internally, but stored as 1-indexed in highlights
                     val bookName = if (verses.isNotEmpty()) verses[0].bookName else ""
-                    val prefix = "bible:$translation/$bookName/$chapter/"
+                    val prefix = "bible:$translation/$bookName/${chapter + 1}/"
                     val filter = com.schwegelbin.openbible.logic.nostr.NostrFilter(
                         kinds = listOf(9802),
                         tags = mapOf("r" to listOf(prefix))
@@ -317,11 +322,22 @@ fun ReadCard(
                             val dao = AppDatabase.getInstance(context).nostrEventDao()
                             val signer = LocalSigner(context)
                             val embeddedRelay = EmbeddedRelay(context)
-                            val repo = HighlightRepository(embeddedRelay, signer, dao)
+                            
+                            // Set up for auto-publish if enabled
+                            val autoPublish = getAutoPublish(context)
+                            val relayUrls = if (autoPublish) getPublicRelays(context).toList() else emptyList()
+                            val syncManager = if (autoPublish && relayUrls.isNotEmpty()) {
+                                val relayPool = RelayPool()
+                                relayUrls.forEach { relayPool.addRelay(it) }
+                                relayPool.connectAll()
+                                SyncManager(embeddedRelay, relayPool, dao)
+                            } else null
+                            
+                            val repo = HighlightRepository(embeddedRelay, signer, dao, syncManager)
                             val ref = BibleReference(
                                 translation = translation,
                                 book = verse.bookName,
-                                chapter = chapter,
+                                chapter = chapter + 1,  // chapter is 0-indexed, convert to 1-indexed
                                 verse = verse.verseNumber
                             )
                             val hl = repo.saveHighlight(
@@ -333,6 +349,11 @@ fun ReadCard(
                             if (hl != null) {
                                 highlights.value = highlights.value +
                                     (verse.verseNumber to hl)
+                                
+                                // Auto-publish if enabled
+                                if (autoPublish && relayUrls.isNotEmpty()) {
+                                    repo.publishHighlight(hl.eventId, relayUrls)
+                                }
                             }
                         } catch (_: Exception) { }
                     }

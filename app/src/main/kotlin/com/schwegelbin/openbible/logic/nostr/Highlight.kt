@@ -131,3 +131,53 @@ fun NostrEvent.toHighlight(): Highlight? {
         reference = referenceUri?.let { BibleReference.fromUri(it) }
     )
 }
+
+/**
+ * Create a kind 1 note that quotes a highlight.
+ * This makes the highlight visible to clients that don't support NIP-84.
+ * 
+ * The note includes:
+ * - The highlighted text as a quote
+ * - The Bible reference
+ * - User's comment (if any)
+ * - A "q" tag referencing the highlight event (NIP-18 style quote)
+ * - A "k" tag indicating the quoted event kind
+ */
+fun createHighlightQuoteNote(
+    pubkey: String,
+    highlightEventId: String,
+    highlightedText: String,
+    reference: BibleReference,
+    comment: String? = null,
+    relayHint: String? = null
+): UnsignedEvent {
+    val tags = mutableListOf<List<String>>()
+    
+    // Quote tag referencing the highlight event (NIP-18)
+    val qTag = if (relayHint != null) {
+        listOf("q", highlightEventId, relayHint)
+    } else {
+        listOf("q", highlightEventId)
+    }
+    tags.add(qTag)
+    
+    // Kind tag for the quoted event
+    tags.add(listOf("k", HIGHLIGHT_KIND.toString()))
+    
+    // Build the note content
+    val refText = "${reference.book} ${reference.chapter}:${reference.verse}"
+    val content = buildString {
+        append("\"$highlightedText\"\n\n")
+        append("— $refText")
+        if (!comment.isNullOrBlank()) {
+            append("\n\n$comment")
+        }
+    }
+    
+    return createUnsignedEvent(
+        pubkey = pubkey,
+        kind = 1,
+        tags = tags,
+        content = content
+    )
+}

@@ -141,20 +141,26 @@ class SyncManager(
         val successfulRelays = mutableListOf<String>()
 
         relayUrls.forEach { url ->
-            val relay = relayPool.getRelay(url)
-            if (relay == null) {
-                Log.w(TAG, "Relay not found in pool: $url")
-                return@forEach
+            // Ensure relay is in pool
+            if (relayPool.getRelay(url) == null) {
+                relayPool.addRelay(url)
             }
+            
+            val relay = relayPool.getRelay(url) ?: return@forEach
 
             // Connect if not connected
             if (relay.currentState != RelayState.CONNECTED) {
                 relay.connect()
                 // Wait for connection with timeout
-                val connected = withTimeoutOrNull(5000L) {
-                    relay.state.first { it == RelayState.CONNECTED }
+                var connected = false
+                repeat(50) {
+                    delay(100)
+                    if (relay.currentState == RelayState.CONNECTED) {
+                        connected = true
+                        return@repeat
+                    }
                 }
-                if (connected == null) {
+                if (!connected) {
                     Log.w(TAG, "Failed to connect to $url")
                     return@forEach
                 }
@@ -177,10 +183,9 @@ class SyncManager(
             if (okReceived?.accepted == true) {
                 Log.d(TAG, "Published event $eventId to $url")
                 successfulRelays.add(url)
-                // Record the publish
                 dao.insertPublishedEvent(PublishedEventEntity(eventId, url))
             } else {
-                Log.w(TAG, "Event $eventId not accepted by $url: ${okReceived?.message}")
+                Log.w(TAG, "Event $eventId not accepted by $url: ${okReceived?.message ?: "timeout"}")
             }
         }
 
