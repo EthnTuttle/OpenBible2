@@ -28,3 +28,4 @@ captures
 .cxx
 .externalNativeBuild
 *.iml
+*.jks

@@ -11,7 +11,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.shape.CircleShape
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -482,19 +482,18 @@ fun NostrSettingsSection() {
             Modifier.fillMaxWidth().padding(vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Status indicator
+            // Status indicator (using symbols for accessibility)
             val state = relayStates.value[relay] ?: com.schwegelbin.openbible.logic.nostr.RelayState.DISCONNECTED
-            val statusColor = when (state) {
-                com.schwegelbin.openbible.logic.nostr.RelayState.CONNECTED -> Color(0xFF4CAF50) // Green
-                com.schwegelbin.openbible.logic.nostr.RelayState.CONNECTING -> Color(0xFFFFC107) // Yellow
-                com.schwegelbin.openbible.logic.nostr.RelayState.DISCONNECTED -> Color(0xFFF44336) // Red
+            val statusSymbol = when (state) {
+                com.schwegelbin.openbible.logic.nostr.RelayState.CONNECTED -> "✓"
+                com.schwegelbin.openbible.logic.nostr.RelayState.CONNECTING -> "~"
+                com.schwegelbin.openbible.logic.nostr.RelayState.DISCONNECTED -> "✗"
             }
-            Box(
-                modifier = Modifier
-                    .padding(end = 8.dp)
-                    .size(10.dp)
-                    .clip(CircleShape)
-                    .background(statusColor)
+            Text(
+                text = statusSymbol,
+                modifier = Modifier.padding(end = 8.dp),
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
             )
             Text(
                 text = relay.removePrefix("wss://").removePrefix("ws://"),

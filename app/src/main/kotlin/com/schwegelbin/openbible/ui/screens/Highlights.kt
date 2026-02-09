@@ -15,7 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
+
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Publish
@@ -258,22 +258,18 @@ fun HighlightCard(
                 )
             }
 
-            // Status badge with indicator dot
+            // Status badge with indicator symbol
             Spacer(modifier = Modifier.height(4.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.End,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Status indicator dot
-                Box(
-                    modifier = Modifier
-                        .size(8.dp)
-                        .clip(CircleShape)
-                        .background(
-                            if (highlight.isPublished) Color(0xFF4CAF50) // Green
-                            else MaterialTheme.colorScheme.outline
-                        )
+                // Status indicator symbol (accessible, not color-dependent)
+                Text(
+                    text = if (highlight.isPublished) "✓" else "○",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
                 )
                 Spacer(modifier = Modifier.padding(horizontal = 4.dp))
                 Text(
@@ -282,12 +278,7 @@ fun HighlightCard(
                     } else {
                         stringResource(R.string.highlight_local_only)
                     },
-                    style = MaterialTheme.typography.labelSmall,
-                    color = if (highlight.isPublished) {
-                        Color(0xFF4CAF50)
-                    } else {
-                        MaterialTheme.colorScheme.outline
-                    }
+                    style = MaterialTheme.typography.labelSmall
                 )
             }
         }
