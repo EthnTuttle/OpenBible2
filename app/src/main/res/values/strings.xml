@@ -70,6 +70,8 @@
     <string name="highlight_no_highlights">No highlights yet</string>
     <string name="highlight_local_only">Local only</string>
     <string name="highlight_published">Published</string>
+    <string name="share">Share</string>
+    <string name="share_highlight_title">Share Highlight</string>
     <string name="nostr">Nostr</string>
     <string name="nostr_identity">Identity</string>
     <string name="nostr_signer">Signer</string>

@@ -1,5 +1,6 @@
 package com.schwegelbin.openbible.ui.screens
 
+import android.content.Intent
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -68,6 +69,8 @@ import com.schwegelbin.openbible.logic.nostr.toHighlight
 import com.schwegelbin.openbible.logic.nostr.db.AppDatabase
 import com.schwegelbin.openbible.logic.nostr.embedded.EmbeddedRelay
 import com.schwegelbin.openbible.logic.nostr.embedded.EventStore
+import com.schwegelbin.openbible.logic.nostr.encodeNevent
+import com.schwegelbin.openbible.logic.nostr.getPublicKeyHex
 import com.schwegelbin.openbible.logic.nostr.hasKeypair
 import com.schwegelbin.openbible.logic.turnChapter
 import com.schwegelbin.openbible.ui.components.CreateHighlightSheet
@@ -343,8 +346,9 @@ fun ReadCard(
 
     // View highlight bottom sheet
     if (showViewSheet.value && selectedHighlight.value != null) {
+        val hl = selectedHighlight.value!!
         ViewHighlightSheet(
-            highlight = selectedHighlight.value!!,
+            highlight = hl,
             onDismiss = {
                 showViewSheet.value = false
                 selectedHighlight.value = null
@@ -354,8 +358,29 @@ fun ReadCard(
                 showViewSheet.value = false
                 selectedHighlight.value = null
             },
+            onShare = {
+                // Generate nevent with relay hints
+                val relayHints = hl.publishedRelays.take(3)
+                val authorPubkey = getPublicKeyHex(context)
+                val nevent = encodeNevent(
+                    eventIdHex = hl.eventId,
+                    relays = relayHints,
+                    authorPubkeyHex = authorPubkey,
+                    kind = 9802  // NIP-84 highlight kind
+                )
+
+                // Share via Android share sheet
+                val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(Intent.EXTRA_TEXT, "nostr:$nevent")
+                    putExtra(Intent.EXTRA_TITLE, context.getString(R.string.share_highlight_title))
+                }
+                context.startActivity(Intent.createChooser(shareIntent, context.getString(R.string.share_highlight_title)))
+
+                showViewSheet.value = false
+                selectedHighlight.value = null
+            },
             onDelete = {
-                val hl = selectedHighlight.value!!
                 scope.launch {
                     withContext(Dispatchers.IO) {
                         try {

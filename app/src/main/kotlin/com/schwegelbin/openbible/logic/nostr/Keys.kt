@@ -288,3 +288,60 @@ private fun createChecksum(hrp: String, data: ByteArray): ByteArray {
 private fun verifyChecksum(hrp: String, data: ByteArray): Boolean {
     return polymod(hrpExpand(hrp) + data) == 1
 }
+
+// -- NIP-19 TLV encoding for nevent/naddr --
+
+/**
+ * TLV types for NIP-19 shareable identifiers.
+ */
+private const val TLV_SPECIAL = 0      // event id for nevent, identifier for naddr
+private const val TLV_RELAY = 1        // relay URL
+private const val TLV_AUTHOR = 2       // pubkey of author
+private const val TLV_KIND = 3         // event kind
+
+/**
+ * Encode an event ID (and optional relay hints) as a nevent bech32 string.
+ * This is a shareable identifier that other Nostr clients can use to fetch the event.
+ */
+fun encodeNevent(
+    eventIdHex: String,
+    relays: List<String> = emptyList(),
+    authorPubkeyHex: String? = null,
+    kind: Int? = null
+): String {
+    val tlvData = mutableListOf<Byte>()
+    
+    // Add event ID (type 0)
+    val eventIdBytes = eventIdHex.hexToByteArray()
+    tlvData.add(TLV_SPECIAL.toByte())
+    tlvData.add(eventIdBytes.size.toByte())
+    tlvData.addAll(eventIdBytes.toList())
+    
+    // Add relay hints (type 1)
+    for (relay in relays.take(3)) { // Limit to 3 relays
+        val relayBytes = relay.toByteArray(Charsets.UTF_8)
+        tlvData.add(TLV_RELAY.toByte())
+        tlvData.add(relayBytes.size.toByte())
+        tlvData.addAll(relayBytes.toList())
+    }
+    
+    // Add author pubkey (type 2)
+    if (authorPubkeyHex != null) {
+        val authorBytes = authorPubkeyHex.hexToByteArray()
+        tlvData.add(TLV_AUTHOR.toByte())
+        tlvData.add(authorBytes.size.toByte())
+        tlvData.addAll(authorBytes.toList())
+    }
+    
+    // Add kind (type 3)
+    if (kind != null) {
+        tlvData.add(TLV_KIND.toByte())
+        tlvData.add(4.toByte()) // kind is 4 bytes (32-bit big-endian)
+        tlvData.add((kind shr 24).toByte())
+        tlvData.add((kind shr 16).toByte())
+        tlvData.add((kind shr 8).toByte())
+        tlvData.add(kind.toByte())
+    }
+    
+    return bech32Encode("nevent", tlvData.toByteArray())
+}

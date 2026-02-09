@@ -102,7 +102,7 @@ fun CreateHighlightSheet(
 
 /**
  * Bottom sheet for viewing an existing highlight.
- * Shows the highlighted text, note, and actions (publish, edit, delete).
+ * Shows the highlighted text, note, and actions (publish, share, delete).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -110,6 +110,7 @@ fun ViewHighlightSheet(
     highlight: Highlight,
     onDismiss: () -> Unit,
     onPublish: () -> Unit,
+    onShare: () -> Unit,
     onDelete: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -155,7 +156,7 @@ fun ViewHighlightSheet(
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            // Actions
+            // Actions - first row: Delete and Share
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -169,6 +170,12 @@ fun ViewHighlightSheet(
                     Text(stringResource(R.string.delete))
                 }
                 Spacer(modifier = Modifier.weight(1f))
+                OutlinedButton(
+                    onClick = onShare,
+                    enabled = highlight.isPublished
+                ) {
+                    Text(stringResource(R.string.share))
+                }
                 Button(onClick = onPublish) {
                     Text(stringResource(R.string.highlight_publish))
                 }

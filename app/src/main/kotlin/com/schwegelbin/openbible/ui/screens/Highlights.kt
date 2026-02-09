@@ -1,5 +1,6 @@
 package com.schwegelbin.openbible.ui.screens
 
+import android.content.Intent
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -50,6 +51,8 @@ import com.schwegelbin.openbible.logic.nostr.LocalSigner
 import com.schwegelbin.openbible.logic.nostr.RelayPool
 import com.schwegelbin.openbible.logic.nostr.db.AppDatabase
 import com.schwegelbin.openbible.logic.nostr.embedded.EmbeddedRelay
+import com.schwegelbin.openbible.logic.nostr.encodeNevent
+import com.schwegelbin.openbible.logic.nostr.getPublicKeyHex
 import com.schwegelbin.openbible.logic.nostr.hasKeypair
 import com.schwegelbin.openbible.logic.nostr.sync.SyncManager
 import com.schwegelbin.openbible.ui.components.ViewHighlightSheet
@@ -192,6 +195,28 @@ fun HighlightsScreen(onNavigateToRead: () -> Unit) {
                         }
                     }
                 }
+                showSheet.value = false
+                selectedHighlight.value = null
+            },
+            onShare = {
+                // Generate nevent with relay hints
+                val relayHints = hl.publishedRelays.take(3)
+                val authorPubkey = getPublicKeyHex(context)
+                val nevent = encodeNevent(
+                    eventIdHex = hl.eventId,
+                    relays = relayHints,
+                    authorPubkeyHex = authorPubkey,
+                    kind = 9802  // NIP-84 highlight kind
+                )
+
+                // Share via Android share sheet
+                val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(Intent.EXTRA_TEXT, "nostr:$nevent")
+                    putExtra(Intent.EXTRA_TITLE, context.getString(R.string.share_highlight_title))
+                }
+                context.startActivity(Intent.createChooser(shareIntent, context.getString(R.string.share_highlight_title)))
+
                 showSheet.value = false
                 selectedHighlight.value = null
             },
